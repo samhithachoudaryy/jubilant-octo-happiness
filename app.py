@@ -1,111 +1,85 @@
-```python
 import streamlit as st
 import requests
-import pandas as pd
 
 st.set_page_config(page_title="News Dashboard", layout="wide")
 
 st.title("📰 News Dashboard")
 
-# Sidebar
+# -----------------------------
+# API KEY (FROM SECRETS)
+# -----------------------------
+api_key = st.secrets.get("NEWS_API_KEY", None)
+
+if not api_key:
+    st.error("❌ API Key not found. Please add NEWS_API_KEY in .streamlit/secrets.toml")
+    st.stop()
+
+# -----------------------------
+# SIDEBAR FILTERS
+# -----------------------------
 st.sidebar.header("Filters")
 
-api_key = st.sidebar.text_input("NewsAPI Key", type="password")
-
-keyword = st.sidebar.text_input("Keyword Search")
-
 country = st.sidebar.selectbox(
-    "Country",
-    {
-        "India": "in",
-        "USA": "us",
-        "UK": "gb",
-        "Australia": "au"
-    }
+    "🌍 Country",
+    ["in", "us", "gb", "au", "ca", "de", "fr"]
 )
 
-num_articles = st.sidebar.slider(
-    "Number of Articles",
-    5,
-    50,
-    10
+category = st.sidebar.selectbox(
+    "📂 Category",
+    ["general", "business", "entertainment", "health", "science", "sports", "technology"]
 )
 
-# Fetch News
-def get_news(api_key, keyword, country, page_size):
+keyword = st.sidebar.text_input("🔎 Keyword Search")
 
-    if keyword.strip():
-        url = "https://newsapi.org/v2/everything"
-        params = {
-            "q": keyword,
-            "pageSize": page_size,
-            "language": "en",
-            "apiKey": api_key
-        }
-    else:
+limit = st.sidebar.slider("📊 Number of Articles", 1, 50, 10)
+
+# -----------------------------
+# FETCH BUTTON
+# -----------------------------
+if st.button("🚀 Fetch News"):
+
+    with st.spinner("Fetching latest news..."):
+
+        # Default endpoint
         url = "https://newsapi.org/v2/top-headlines"
         params = {
+            "apiKey": api_key,
             "country": country,
-            "pageSize": page_size,
-            "apiKey": api_key
+            "category": category,
+            "pageSize": limit
         }
 
-    response = requests.get(url, params=params)
+        # If keyword is given, switch endpoint
+        if keyword:
+            url = "https://newsapi.org/v2/everything"
+            params = {
+                "apiKey": api_key,
+                "q": keyword,
+                "pageSize": limit,
+                "sortBy": "publishedAt"
+            }
 
-    if response.status_code == 200:
-        return response.json()
+        response = requests.get(url, params=params)
 
-    st.error(f"API Error: {response.text}")
-    return None
+        if response.status_code != 200:
+            st.error("❌ Error fetching news")
+            st.write(response.json())
+        else:
+            articles = response.json().get("articles", [])
 
+            if not articles:
+                st.warning("No articles found")
+            else:
+                st.success(f"Found {len(articles)} articles")
 
-if st.button("Get News"):
+                for article in articles:
+                    st.markdown("---")
 
-    if not api_key:
-        st.warning("Please enter your API key")
-        st.stop()
+                    st.subheader(article.get("title", "No Title"))
+                    st.write(article.get("description", "No Description"))
 
-    data = get_news(
-        api_key,
-        keyword,
-        country,
-        num_articles
-    )
+                    if article.get("url"):
+                        st.markdown(f"🔗 [Read Full Article]({article['url']})")
 
-    if data and data.get("articles"):
-
-        articles = data["articles"]
-
-        records = []
-
-        for article in articles:
-
-            title = article.get("title", "")
-            source = article.get("source", {}).get("name", "")
-            url = article.get("url", "")
-            desc = article.get("description", "")
-
-            records.append({
-                "Title": title,
-                "Source": source,
-                "URL": url
-            })
-
-            st.subheader(title)
-            st.write(f"**Source:** {source}")
-
-            if desc:
-                st.write(desc)
-
-            st.markdown(f"[Read Article]({url})")
-
-            st.divider()
-
-        df = pd.DataFrame(records)
-
-        st.subheader("Results Table")
-        st.dataframe(df, use_container_width=True)
-
-    else:
-        st.warning("No news found.")
-```
+                    if article.get("urlToImage"):
+                        st.image(article["urlToImage"], use_container_width=True)
